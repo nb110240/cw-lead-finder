@@ -1,7 +1,37 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import OpenAI from 'openai';
 
-// ── Apollo helpers (inlined to avoid cross-directory import issues in Vercel) ──
+// ── OpenAI helper (direct REST to avoid SDK bundling issues) ──
+
+async function chatComplete(
+  apiKey: string,
+  system: string,
+  user: string
+): Promise<string> {
+  const res = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model: 'o4-mini',
+      messages: [
+        { role: 'developer', content: system },
+        { role: 'user', content: user },
+      ],
+    }),
+  });
+
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`OpenAI API error ${res.status}: ${err}`);
+  }
+
+  const data = await res.json();
+  return data.choices?.[0]?.message?.content || '';
+}
+
+// ── Apollo helpers ──
 
 const APOLLO_TIMEOUT_MS = 8000;
 
@@ -128,11 +158,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(400).json({ error: 'Industry is required' });
   }
 
-  const openai = new OpenAI({ apiKey: openaiKey });
-
   try {
     // ── Step 1: Two targeted SerpAPI searches in parallel ──
-    console.log('[find-leads] Starting search for:', { industry, location, companySize, count });
+    console.log('[find-leads] Starting:', { industry, location, companySize, count });
 
     const searches = [
       `${industry} company ${location} funding expansion hiring 2025 2026`,
@@ -168,16 +196,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .map((r, i) => `[${i + 1}] ${r.title}\n${r.snippet}\nURL: ${r.link}`)
       .join('\n\n');
 
-    const extractResp = await openai.chat.completions.create({
-      model: 'o4-mini',
-      messages: [
-        {
-          role: 'developer',
-          content: 'You extract company names and website domains from search results. Return ONLY valid JSON, no markdown fences.',
-        },
-        {
-          role: 'user',
-          content: `Extract unique ${industry} companies from these search results that are located in or near ${location}. Company size target: ${companySize} employees.
+    const extractText = await chatComplete(
+      openaiKey,
+      'You extract company names and website domains from search results. Return ONLY valid JSON, no markdown fences.',
+      `Extract unique ${industry} companies from these search results that are located in or near ${location}. Company size target: ${companySize} employees.
 
 SEARCH RESULTS:
 ${resultsText}
@@ -189,15 +211,12 @@ Rules:
 - Include the domain WITHOUT https:// prefix
 - Include the specific news snippet that makes them relevant
 - Max ${Math.min(count, 12)} companies
-- Deduplicate by company name`,
-        },
-      ],
-    });
+- Deduplicate by company name`
+    );
 
-    const extractText = extractResp.choices[0]?.message?.content || '';
     const extractMatch = extractText.match(/\{[\s\S]*\}/);
     if (!extractMatch) {
-      console.error('[find-leads] Failed to extract companies. Raw:', extractText.slice(0, 500));
+      console.error('[find-leads] Extract failed. Raw:', extractText.slice(0, 500));
       return res.status(500).json({ error: 'Failed to extract companies from search results' });
     }
 
@@ -209,7 +228,7 @@ Rules:
       source_url: string;
     }> = extracted.companies || [];
 
-    console.log('[find-leads] Extracted companies:', companies.length);
+    console.log('[find-leads] Companies extracted:', companies.length);
 
     if (companies.length === 0) {
       return res.json({
@@ -236,7 +255,7 @@ Rules:
       ),
     ]);
 
-    console.log('[find-leads] Apollo enrichment complete');
+    console.log('[find-leads] Apollo done');
 
     const enrichedLeads = companySlice.map((co, i) => {
       const contact =
@@ -282,16 +301,10 @@ ${l.contact ? `Contact: ${l.contact.name} -- ${l.contact.title} (${l.contact.ema
       )
       .join('\n\n');
 
-    const scoreResp = await openai.chat.completions.create({
-      model: 'o4-mini',
-      messages: [
-        {
-          role: 'developer',
-          content: 'You are a commercial real estate lead scoring system. Score and format leads for a tenant representation team. Return ONLY valid JSON, no markdown fences. Use ONLY the data provided -- do not invent headcounts, contacts, or facts.',
-        },
-        {
-          role: 'user',
-          content: `Score these ${industry} companies in ${location} for a CRE tenant rep team. Target company size: ${companySize}.
+    const scoreText = await chatComplete(
+      openaiKey,
+      'You are a commercial real estate lead scoring system. Score and format leads for a tenant representation team. Return ONLY valid JSON, no markdown fences. Use ONLY the data provided -- do not invent headcounts, contacts, or facts.',
+      `Score these ${industry} companies in ${location} for a CRE tenant rep team. Target company size: ${companySize}.
 
 VERIFIED COMPANY DATA:
 ${leadsContext}
@@ -316,15 +329,12 @@ Also return: { "market_context": "1-2 sentences about this ICP in this market ba
 
 Return: { "leads": [...], "market_context": "..." }
 
-CRITICAL: If Apollo didn't return a headcount, say "unverified" not a made-up number. If no contact was found, set contact to null. Only include facts from the provided data.`,
-        },
-      ],
-    });
+CRITICAL: If Apollo didn't return a headcount, say "unverified" not a made-up number. If no contact was found, set contact to null. Only include facts from the provided data.`
+    );
 
-    const scoreText = scoreResp.choices[0]?.message?.content || '';
     const scoreMatch = scoreText.match(/\{[\s\S]*\}/);
     if (!scoreMatch) {
-      console.error('[find-leads] Failed to score. Raw:', scoreText.slice(0, 500));
+      console.error('[find-leads] Score failed. Raw:', scoreText.slice(0, 500));
       return res.status(500).json({ error: 'Failed to score leads' });
     }
 
@@ -341,7 +351,7 @@ CRITICAL: If Apollo didn't return a headcount, say "unverified" not a made-up nu
         'Lead data sourced from Google News, Apollo.io, and company websites. Built by Torrey Labs for C&W. Verify details before outreach.',
     });
   } catch (err: any) {
-    console.error('[find-leads] Error:', err?.message, err?.stack?.slice(0, 300));
+    console.error('[find-leads] Error:', err?.message);
     return res.status(500).json({ error: 'Lead generation failed. Please try again.' });
   }
 }
