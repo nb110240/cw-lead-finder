@@ -61,7 +61,7 @@ async function enrichOrg(domain) {
 }
 
 // Jina Reader — fetch careers/jobs page and main site for hiring signals + company context
-var JINA_TIMEOUT = 6000;
+var JINA_TIMEOUT = 4000;
 
 async function jinaFetchCareers(domain) {
   var jinaKey = process.env.JINA_API_KEY;
@@ -251,11 +251,12 @@ module.exports = async function handler(req, res) {
     console.log('[find-leads] Companies extracted:', companies.length);
     if (!companies.length) return res.json({ ok: true, leads: [], market_context: 'No matching companies found.', generated_at: new Date().toISOString() });
 
-    // Step 3: Enrich ALL companies — Apollo + Jina careers + Jina about — ALL in parallel
+    // Step 3: Enrich companies — Apollo for all, Jina for top 6 only (to stay within 60s)
+    var jinaLimit = Math.min(companies.length, 6);
     var contactPromises = companies.map(function(c) { return c.domain ? findContact(c.domain) : Promise.resolve(null); });
     var orgPromises = companies.map(function(c) { return c.domain ? enrichOrg(c.domain) : Promise.resolve(null); });
-    var careersPromises = companies.map(function(c) { return c.domain ? jinaFetchCareers(c.domain) : Promise.resolve(null); });
-    var aboutPromises = companies.map(function(c) { return c.domain ? jinaFetchAbout(c.domain) : Promise.resolve(null); });
+    var careersPromises = companies.map(function(c, idx) { return (c.domain && idx < jinaLimit) ? jinaFetchCareers(c.domain) : Promise.resolve(null); });
+    var aboutPromises = companies.map(function(c, idx) { return (c.domain && idx < jinaLimit) ? jinaFetchAbout(c.domain) : Promise.resolve(null); });
 
     var allEnrich = await Promise.all([
       Promise.allSettled(contactPromises),
