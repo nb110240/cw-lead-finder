@@ -1,12 +1,15 @@
-// OpenAI via direct REST
-async function chatComplete(apiKey, system, user) {
+// OpenAI via direct REST — supports both reasoning (o4-mini) and fast (gpt-4o-mini) models
+async function chatComplete(apiKey, system, user, model) {
+  model = model || 'gpt-4o-mini';
+  // o-series models use 'developer' role, gpt models use 'system' role
+  var systemRole = model.startsWith('o') ? 'developer' : 'system';
   var res = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + apiKey },
     body: JSON.stringify({
-      model: 'o4-mini',
+      model: model,
       messages: [
-        { role: 'developer', content: system },
+        { role: systemRole, content: system },
         { role: 'user', content: user },
       ],
     }),
