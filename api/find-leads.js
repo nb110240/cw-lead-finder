@@ -270,47 +270,21 @@ module.exports = async function handler(req, res) {
     var aboutArr = allEnrich[3];
     console.log('[find-leads] Apollo + Jina done');
 
-    // Use o4-mini to extract hiring signals from career pages
-    var hiringSignals = [];
+    // Count career pages that returned data (for sources_used reporting)
     var careersWithData = [];
     for (var ci = 0; ci < companies.length; ci++) {
       var careersPage = careersArr[ci].status === 'fulfilled' ? careersArr[ci].value : null;
       if (careersPage && careersPage.length > 200) {
-        careersWithData.push({ index: ci, name: companies[ci].name, content: careersPage.slice(0, 1000) });
+        careersWithData.push(ci);
       }
     }
-
-    if (careersWithData.length > 0) {
-      console.log('[find-leads] Analyzing', careersWithData.length, 'career pages');
-      var careersTxt = careersWithData.map(function(c) {
-        return '=== ' + c.name + ' (index ' + c.index + ') ===\n' + c.content;
-      }).join('\n\n');
-
-      try {
-        var hiringRaw = await chatComplete(openaiKey,
-          'You analyze company career pages to extract hiring signals for commercial real estate brokers. Return ONLY valid JSON, no markdown fences.',
-          'Analyze these career pages and extract hiring signals. For each company, count approximate open roles and identify the types of roles being hired (engineering, sales, R&D, operations, etc.) and any location-specific hiring.\n\nCAREER PAGES:\n' + careersTxt + '\n\nReturn: { "signals": [{ "index": <company index number>, "open_roles_approx": <number or "unknown">, "role_types": "e.g. engineering, clinical, operations", "location_hiring": "any mentions of specific city/office hiring", "hiring_summary": "1 sentence summary of hiring activity" }] }'
-        );
-        var hm = hiringRaw.match(/\{[\s\S]*\}/);
-        if (hm) {
-          hiringSignals = JSON.parse(hm[0]).signals || [];
-        }
-      } catch (e) {
-        console.error('[find-leads] Hiring analysis failed:', e.message);
-      }
-    }
-
-    // Build hiring signal lookup by index
-    var hiringByIndex = {};
-    for (var hi = 0; hi < hiringSignals.length; hi++) {
-      hiringByIndex[hiringSignals[hi].index] = hiringSignals[hi];
-    }
+    console.log('[find-leads] Career pages found:', careersWithData.length);
 
     var enriched = companies.map(function(c, i) {
       var contact = contactArr[i].status === 'fulfilled' ? contactArr[i].value : null;
       var org = orgArr[i].status === 'fulfilled' ? orgArr[i].value : null;
       var aboutPage = aboutArr[i].status === 'fulfilled' ? aboutArr[i].value : null;
-      var hiring = hiringByIndex[i] || null;
+      var rawCareers = careersArr[i].status === 'fulfilled' ? careersArr[i].value : null;
 
       return {
         name: c.name, domain: c.domain, news_snippet: c.news_snippet, source_url: c.source_url,
@@ -324,7 +298,7 @@ module.exports = async function handler(req, res) {
           short_description: (org.short_description || '').slice(0, 200),
         } : null,
         about: aboutPage ? aboutPage.slice(0, 300) : null,
-        hiring: hiring,
+        careers_raw: (rawCareers && rawCareers.length > 200) ? rawCareers.slice(0, 600) : null,
       };
     });
 
@@ -336,8 +310,8 @@ module.exports = async function handler(req, res) {
       var contactLine = l.contact
         ? 'Contact: ' + l.contact.name + ' -- ' + l.contact.title + ' (' + (l.contact.email||'no email') + ')' + (l.contact.linkedin ? ' | LinkedIn: ' + l.contact.linkedin : '')
         : 'No contact found';
-      var hiringLine = l.hiring
-        ? 'HIRING SIGNAL (from careers page): ~' + l.hiring.open_roles_approx + ' open roles | Types: ' + l.hiring.role_types + ' | ' + l.hiring.hiring_summary + (l.hiring.location_hiring ? ' | Location hiring: ' + l.hiring.location_hiring : '')
+      var hiringLine = l.careers_raw
+        ? 'CAREERS PAGE (live scrape from ' + l.domain + '/careers): ' + l.careers_raw.slice(0, 400)
         : 'No careers page data';
       var aboutLine = l.about ? 'Website excerpt: ' + l.about.slice(0, 200) : '';
 
