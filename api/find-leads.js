@@ -251,23 +251,20 @@ module.exports = async function handler(req, res) {
     console.log('[find-leads] Companies extracted:', companies.length);
     if (!companies.length) return res.json({ ok: true, leads: [], market_context: 'No matching companies found.', generated_at: new Date().toISOString() });
 
-    // Step 3: Enrich companies — Apollo for all, Jina for top 6 only (to stay within 60s)
-    var jinaLimit = Math.min(companies.length, 6);
+    // Step 3: Enrich companies — Apollo for all, Jina careers for top 5 only
+    var jinaLimit = Math.min(companies.length, 5);
     var contactPromises = companies.map(function(c) { return c.domain ? findContact(c.domain) : Promise.resolve(null); });
     var orgPromises = companies.map(function(c) { return c.domain ? enrichOrg(c.domain) : Promise.resolve(null); });
     var careersPromises = companies.map(function(c, idx) { return (c.domain && idx < jinaLimit) ? jinaFetchCareers(c.domain) : Promise.resolve(null); });
-    var aboutPromises = companies.map(function(c, idx) { return (c.domain && idx < jinaLimit) ? jinaFetchAbout(c.domain) : Promise.resolve(null); });
 
     var allEnrich = await Promise.all([
       Promise.allSettled(contactPromises),
       Promise.allSettled(orgPromises),
       Promise.allSettled(careersPromises),
-      Promise.allSettled(aboutPromises),
     ]);
     var contactArr = allEnrich[0];
     var orgArr = allEnrich[1];
     var careersArr = allEnrich[2];
-    var aboutArr = allEnrich[3];
     console.log('[find-leads] Apollo + Jina done');
 
     // Count career pages that returned data (for sources_used reporting)
@@ -283,7 +280,6 @@ module.exports = async function handler(req, res) {
     var enriched = companies.map(function(c, i) {
       var contact = contactArr[i].status === 'fulfilled' ? contactArr[i].value : null;
       var org = orgArr[i].status === 'fulfilled' ? orgArr[i].value : null;
-      var aboutPage = aboutArr[i].status === 'fulfilled' ? aboutArr[i].value : null;
       var rawCareers = careersArr[i].status === 'fulfilled' ? careersArr[i].value : null;
 
       return {
@@ -297,7 +293,6 @@ module.exports = async function handler(req, res) {
           founded_year: org.founded_year,
           short_description: (org.short_description || '').slice(0, 200),
         } : null,
-        about: aboutPage ? aboutPage.slice(0, 300) : null,
         careers_raw: (rawCareers && rawCareers.length > 200) ? rawCareers.slice(0, 600) : null,
       };
     });
@@ -313,22 +308,13 @@ module.exports = async function handler(req, res) {
       var hiringLine = l.careers_raw
         ? 'CAREERS PAGE (live scrape from ' + l.domain + '/careers): ' + l.careers_raw.slice(0, 400)
         : 'No careers page data';
-      var aboutLine = l.about ? 'Website excerpt: ' + l.about.slice(0, 200) : '';
-
-      return '[' + (i+1) + '] ' + l.name + ' (' + l.domain + ')\nNews: ' + l.news_snippet + '\nSource: ' + l.source_url + '\n' + orgLine + '\n' + contactLine + '\n' + hiringLine + (aboutLine ? '\n' + aboutLine : '');
+      return '[' + (i+1) + '] ' + l.name + ' (' + l.domain + ')\nNews: ' + l.news_snippet + '\nSource: ' + l.source_url + '\n' + orgLine + '\n' + contactLine + '\n' + hiringLine;
     }).join('\n\n');
 
     // Track which sources actually contributed data
     var sourcesUsed = ['Google Search (SerpAPI)', 'Google News (SerpAPI)', 'Apollo.io (contacts + org data)'];
     if (careersWithData.length > 0) {
       sourcesUsed.push('Jina Reader (career pages — ' + careersWithData.length + ' companies)');
-    }
-    var aboutCount = 0;
-    for (var ai = 0; ai < aboutArr.length; ai++) {
-      if (aboutArr[ai].status === 'fulfilled' && aboutArr[ai].value) aboutCount++;
-    }
-    if (aboutCount > 0) {
-      sourcesUsed.push('Jina Reader (websites — ' + aboutCount + ' companies)');
     }
 
     var scored = await chatComplete(openaiKey,
