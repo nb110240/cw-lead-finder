@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import Anthropic from '@anthropic-ai/sdk';
+import OpenAI from 'openai';
 import { findContactByDomain, enrichOrganization } from '../lib/apollo';
 
 // Rate limit: in-memory (resets on cold start — fine for a demo)
@@ -32,9 +32,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(429).json({ error: 'Rate limited. Try again in a few minutes.' });
   }
 
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+  const openaiKey = process.env.OPENAI_API_KEY;
   const serpApiKey = process.env.SERPAPI_API_KEY;
-  if (!apiKey || !serpApiKey) {
+  if (!openaiKey || !serpApiKey) {
     return res.status(500).json({ error: 'Service unavailable' });
   }
 
@@ -55,6 +55,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!industry) {
     return res.status(400).json({ error: 'Industry is required' });
   }
+
+  const openai = new OpenAI({ apiKey: openaiKey });
 
   try {
     // ── Step 1: Two targeted SerpAPI searches in parallel ──
@@ -77,19 +79,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return true;
     });
 
-    // ── Step 2: Claude extracts company names + domains from results ──
-    const anthropic = new Anthropic({ apiKey });
-
+    // ── Step 2: Extract company names + domains from search results ──
     const resultsText = allResults
       .map((r, i) => `[${i + 1}] ${r.title}\n${r.snippet}\nURL: ${r.link}`)
       .join('\n\n');
 
-    const extractMsg = await anthropic.messages.create({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 2000,
-      system:
-        'You extract company names and website domains from search results. Return ONLY valid JSON.',
+    const extractResp = await openai.chat.completions.create({
+      model: 'o4-mini',
       messages: [
+        {
+          role: 'developer',
+          content: 'You extract company names and website domains from search results. Return ONLY valid JSON, no markdown fences.',
+        },
         {
           role: 'user',
           content: `Extract unique ${industry} companies from these search results that are located in or near ${location}. Company size target: ${companySize} employees.
@@ -109,8 +110,7 @@ Rules:
       ],
     });
 
-    const extractText =
-      extractMsg.content[0].type === 'text' ? extractMsg.content[0].text : '';
+    const extractText = extractResp.choices[0]?.message?.content || '';
     const extractMatch = extractText.match(/\{[\s\S]*\}/);
     if (!extractMatch) {
       return res.status(500).json({ error: 'Failed to extract companies from search results' });
@@ -128,8 +128,7 @@ Rules:
       return res.json({
         ok: true,
         leads: [],
-        market_context:
-          'No matching companies found. Try broadening the industry or location.',
+        market_context: 'No matching companies found. Try broadening the industry or location.',
         generated_at: new Date().toISOString(),
       });
     }
@@ -163,9 +162,7 @@ Rules:
         source_url: co.source_url,
         contact: contact
           ? {
-              name: [contact.first_name, contact.last_name]
-                .filter(Boolean)
-                .join(' '),
+              name: [contact.first_name, contact.last_name].filter(Boolean).join(' '),
               title: contact.title,
               email: contact.email,
               linkedin: contact.linkedin_url,
@@ -173,18 +170,18 @@ Rules:
           : null,
         org: orgData
           ? {
-              headcount: orgData.estimated_num_employees || null,
-              industry: orgData.industry || null,
-              city: orgData.city || null,
-              state: orgData.state || null,
-              founded_year: orgData.founded_year || null,
-              linkedin_url: orgData.linkedin_url || null,
+              headcount: (orgData as any).estimated_num_employees || null,
+              industry: (orgData as any).industry || null,
+              city: (orgData as any).city || null,
+              state: (orgData as any).state || null,
+              founded_year: (orgData as any).founded_year || null,
+              linkedin_url: (orgData as any).linkedin_url || null,
             }
           : null,
       };
     });
 
-    // ── Step 4: Claude scores and generates outreach angles ──
+    // ── Step 4: Score and generate outreach angles ──
     const leadsContext = enrichedLeads
       .map(
         (l, i) =>
@@ -196,12 +193,13 @@ ${l.contact ? `Contact: ${l.contact.name} -- ${l.contact.title} (${l.contact.ema
       )
       .join('\n\n');
 
-    const scoreMsg = await anthropic.messages.create({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 3000,
-      system:
-        'You are a commercial real estate lead scoring system. Score and format leads for a tenant representation team. Return ONLY valid JSON. Use ONLY the data provided -- do not invent headcounts, contacts, or facts.',
+    const scoreResp = await openai.chat.completions.create({
+      model: 'o4-mini',
       messages: [
+        {
+          role: 'developer',
+          content: 'You are a commercial real estate lead scoring system. Score and format leads for a tenant representation team. Return ONLY valid JSON, no markdown fences. Use ONLY the data provided -- do not invent headcounts, contacts, or facts.',
+        },
         {
           role: 'user',
           content: `Score these ${industry} companies in ${location} for a CRE tenant rep team. Target company size: ${companySize}.
@@ -234,8 +232,7 @@ CRITICAL: If Apollo didn't return a headcount, say "unverified" not a made-up nu
       ],
     });
 
-    const scoreText =
-      scoreMsg.content[0].type === 'text' ? scoreMsg.content[0].text : '';
+    const scoreText = scoreResp.choices[0]?.message?.content || '';
     const scoreMatch = scoreText.match(/\{[\s\S]*\}/);
     if (!scoreMatch) {
       return res.status(500).json({ error: 'Failed to score leads' });
