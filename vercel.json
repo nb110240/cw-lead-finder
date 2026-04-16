@@ -1,7 +1,7 @@
 {
   "version": 2,
   "functions": {
-    "api/find-leads.ts": {
+    "api/find-leads.js": {
       "maxDuration": 60
     }
   }
