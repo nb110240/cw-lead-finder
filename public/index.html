@@ -792,7 +792,7 @@ document.getElementById('finder-form').addEventListener('submit', async function
 
   try {
     const triggers = getSelectedTriggers();
-    const res = await fetch('https://sersweai.com/api/demo/find-leads', {
+    const res = await fetch('/api/find-leads', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
