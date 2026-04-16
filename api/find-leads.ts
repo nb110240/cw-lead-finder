@@ -1,10 +1,80 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import OpenAI from 'openai';
-import { findContactByDomain, enrichOrganization } from '../lib/apollo';
 
-// Rate limit: in-memory (resets on cold start — fine for a demo)
+// ── Apollo helpers (inlined to avoid cross-directory import issues in Vercel) ──
+
+const APOLLO_TIMEOUT_MS = 8000;
+
+type ApolloContact = {
+  first_name: string | null;
+  last_name: string | null;
+  title: string | null;
+  email: string | null;
+  linkedin_url: string | null;
+};
+
+async function findContactByDomain(domain: string): Promise<ApolloContact | null> {
+  const apiKey = process.env.APOLLO_API_KEY;
+  if (!apiKey) return null;
+
+  try {
+    const res = await fetch('https://api.apollo.io/v1/mixed_people/search', {
+      method: 'POST',
+      signal: AbortSignal.timeout(APOLLO_TIMEOUT_MS),
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Api-Key': apiKey,
+      },
+      body: JSON.stringify({
+        q_organization_domains: domain,
+        page: 1,
+        per_page: 5,
+        person_seniorities: ['owner', 'founder', 'c_suite', 'partner', 'vp', 'director', 'manager'],
+      }),
+    });
+
+    if (!res.ok) return null;
+    const data = await res.json();
+    const people: Record<string, unknown>[] = data.people || [];
+    if (people.length === 0) return null;
+
+    const person = people[0];
+    return {
+      first_name: (person.first_name as string) || null,
+      last_name: (person.last_name as string) || null,
+      title: (person.title as string) || null,
+      email: (person.email as string) || null,
+      linkedin_url: (person.linkedin_url as string) || null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function enrichOrganization(domain: string): Promise<Record<string, any> | null> {
+  const apiKey = process.env.APOLLO_API_KEY;
+  if (!apiKey) return null;
+
+  try {
+    const res = await fetch(
+      `https://api.apollo.io/v1/organizations/enrich?domain=${encodeURIComponent(domain)}`,
+      {
+        headers: { 'X-Api-Key': apiKey },
+        signal: AbortSignal.timeout(APOLLO_TIMEOUT_MS),
+      }
+    );
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.organization || null;
+  } catch {
+    return null;
+  }
+}
+
+// ── Rate limiting ──
+
 const rateLimitMap = new Map<string, number[]>();
-const RATE_WINDOW_MS = 600_000; // 10 min
+const RATE_WINDOW_MS = 600_000;
 const RATE_LIMIT = 5;
 
 function isRateLimited(ip: string): boolean {
@@ -16,10 +86,11 @@ function isRateLimited(ip: string): boolean {
   return false;
 }
 
+// ── Main handler ──
+
 export const config = { maxDuration: 60 };
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  // CORS
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -35,6 +106,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const openaiKey = process.env.OPENAI_API_KEY;
   const serpApiKey = process.env.SERPAPI_API_KEY;
   if (!openaiKey || !serpApiKey) {
+    console.error('[find-leads] Missing env vars:', { openai: !!openaiKey, serp: !!serpApiKey });
     return res.status(500).json({ error: 'Service unavailable' });
   }
 
@@ -60,6 +132,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     // ── Step 1: Two targeted SerpAPI searches in parallel ──
+    console.log('[find-leads] Starting search for:', { industry, location, companySize, count });
+
     const searches = [
       `${industry} company ${location} funding expansion hiring 2025 2026`,
       triggers
@@ -71,7 +145,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       searches.map(q => serpApiSearch(serpApiKey, q, 10))
     );
 
-    // Deduplicate by URL
     const seen = new Set<string>();
     const allResults = searchResults.flat().filter(r => {
       if (seen.has(r.link)) return false;
@@ -79,7 +152,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return true;
     });
 
-    // ── Step 2: Extract company names + domains from search results ──
+    console.log('[find-leads] Search results:', allResults.length);
+
+    if (allResults.length === 0) {
+      return res.json({
+        ok: true,
+        leads: [],
+        market_context: 'No matching results found. Try broadening the industry or location.',
+        generated_at: new Date().toISOString(),
+      });
+    }
+
+    // ── Step 2: Extract company names + domains ──
     const resultsText = allResults
       .map((r, i) => `[${i + 1}] ${r.title}\n${r.snippet}\nURL: ${r.link}`)
       .join('\n\n');
@@ -113,6 +197,7 @@ Rules:
     const extractText = extractResp.choices[0]?.message?.content || '';
     const extractMatch = extractText.match(/\{[\s\S]*\}/);
     if (!extractMatch) {
+      console.error('[find-leads] Failed to extract companies. Raw:', extractText.slice(0, 500));
       return res.status(500).json({ error: 'Failed to extract companies from search results' });
     }
 
@@ -123,6 +208,8 @@ Rules:
       news_snippet: string;
       source_url: string;
     }> = extracted.companies || [];
+
+    console.log('[find-leads] Extracted companies:', companies.length);
 
     if (companies.length === 0) {
       return res.json({
@@ -148,6 +235,8 @@ Rules:
         )
       ),
     ]);
+
+    console.log('[find-leads] Apollo enrichment complete');
 
     const enrichedLeads = companySlice.map((co, i) => {
       const contact =
@@ -235,32 +324,28 @@ CRITICAL: If Apollo didn't return a headcount, say "unverified" not a made-up nu
     const scoreText = scoreResp.choices[0]?.message?.content || '';
     const scoreMatch = scoreText.match(/\{[\s\S]*\}/);
     if (!scoreMatch) {
+      console.error('[find-leads] Failed to score. Raw:', scoreText.slice(0, 500));
       return res.status(500).json({ error: 'Failed to score leads' });
     }
 
     const result = JSON.parse(scoreMatch[0]);
+    console.log('[find-leads] Done. Leads:', result.leads?.length || 0);
 
     return res.json({
       ok: true,
       criteria: { industry, location, companySize, triggers },
       ...result,
-      sources_used: [
-        'Google News (SerpAPI)',
-        'Apollo.io (contacts + org data)',
-      ],
+      sources_used: ['Google News (SerpAPI)', 'Apollo.io (contacts + org data)'],
       generated_at: new Date().toISOString(),
       disclaimer:
         'Lead data sourced from Google News, Apollo.io, and company websites. Built by Torrey Labs for C&W. Verify details before outreach.',
     });
   } catch (err: any) {
-    console.error('[find-leads]', err?.message);
+    console.error('[find-leads] Error:', err?.message, err?.stack?.slice(0, 300));
     return res.status(500).json({ error: 'Lead generation failed. Please try again.' });
   }
 }
 
-/**
- * Search Google via SerpAPI.
- */
 async function serpApiSearch(
   apiKey: string,
   query: string,
@@ -277,14 +362,18 @@ async function serpApiSearch(
     const res = await fetch(`https://serpapi.com/search.json?${params.toString()}`, {
       signal: AbortSignal.timeout(10000),
     });
-    if (!res.ok) return [];
+    if (!res.ok) {
+      console.error('[serpapi] HTTP', res.status);
+      return [];
+    }
     const data = await res.json();
     return (data.organic_results || []).map((r: any) => ({
       title: r.title || '',
       snippet: r.snippet || '',
       link: r.link || '',
     }));
-  } catch {
+  } catch (err: any) {
+    console.error('[serpapi] Error:', err?.message);
     return [];
   }
 }
