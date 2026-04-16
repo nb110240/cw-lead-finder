@@ -1,0 +1,907 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tenant Lead Finder — Torrey Labs for C&W</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+  --bg: #FAFAF7;
+  --surface: #FFFFFF;
+  --border: #E2DFD6;
+  --accent: #1a2332;
+  --accent-warm: #d4622b;
+  --text: #1A1A1E;
+  --text-2: #3D3D44;
+  --text-3: #6B6B74;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Inter', system-ui, sans-serif;
+  font-weight: 400;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+.page {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 3rem 2rem;
+}
+
+.header {
+  margin-bottom: 3rem;
+}
+
+.brand {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--accent-warm);
+  margin-bottom: 1rem;
+}
+
+h1 {
+  font-size: 1.8rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin-bottom: 0.5rem;
+}
+
+.subtitle {
+  font-size: 0.95rem;
+  color: var(--text-3);
+  max-width: 600px;
+}
+
+/* Form */
+.form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.25rem;
+  margin-bottom: 1.5rem;
+}
+
+.form-group { display: flex; flex-direction: column; gap: 0.4rem; }
+.form-group.full { grid-column: 1 / -1; }
+
+label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-2);
+}
+
+input, select, textarea {
+  font-family: inherit;
+  font-size: 0.9rem;
+  padding: 0.7rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+input:focus, select:focus, textarea:focus {
+  border-color: var(--accent);
+}
+
+textarea { resize: vertical; min-height: 60px; }
+
+/* Trigger checkboxes */
+.trigger-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.trigger-chip {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--text-2);
+  padding: 0.45rem 0.85rem;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: var(--surface);
+  cursor: pointer;
+  transition: all 0.2s;
+  user-select: none;
+}
+
+.trigger-chip:hover {
+  border-color: var(--accent-warm);
+}
+
+.trigger-chip input[type="checkbox"] {
+  display: none;
+}
+
+.trigger-chip.checked {
+  background: #fdf4ef;
+  border-color: var(--accent-warm);
+  color: var(--accent-warm);
+}
+
+.submit-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #fff;
+  background: var(--accent-warm);
+  border: none;
+  padding: 0.8rem 2rem;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.submit-btn:hover { background: #b8531f; }
+.submit-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+/* Export button */
+.export-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-family: inherit;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--accent-warm);
+  background: none;
+  border: 1px solid var(--accent-warm);
+  padding: 0.45rem 1rem;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.export-btn:hover {
+  background: var(--accent-warm);
+  color: #fff;
+}
+
+/* Results */
+.results { margin-top: 2.5rem; }
+
+.results-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.results-header h2 {
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+
+.market-context {
+  font-size: 0.85rem;
+  color: var(--text-3);
+  font-style: italic;
+  margin-bottom: 1.5rem;
+  padding: 1rem;
+  background: var(--surface);
+  border-left: 3px solid var(--accent-warm);
+  border-radius: 0 6px 6px 0;
+}
+
+.lead-list { display: flex; flex-direction: column; gap: 1rem; }
+
+.lead-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1.5rem;
+  transition: box-shadow 0.2s;
+}
+
+.lead-card:hover {
+  box-shadow: 0 4px 20px rgba(0,0,0,0.06);
+}
+
+.lead-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 0.75rem;
+}
+
+.lead-company {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.lead-industry {
+  font-size: 0.78rem;
+  color: var(--text-3);
+  margin-top: 0.15rem;
+}
+
+.priority-badge {
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 0.3rem 0.7rem;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.priority-high { background: #fef2f2; color: #dc2626; }
+.priority-medium { background: #fff7ed; color: #ea580c; }
+.priority-low { background: #f0fdf4; color: #16a34a; }
+
+.lead-trigger {
+  font-size: 0.85rem;
+  color: var(--text-2);
+  margin-bottom: 0.75rem;
+  padding: 0.6rem 0.8rem;
+  background: #f8f7f4;
+  border-radius: 4px;
+}
+
+.lead-trigger strong {
+  color: var(--accent-warm);
+  font-size: 0.7rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.lead-meta {
+  display: flex;
+  gap: 1.5rem;
+  font-size: 0.78rem;
+  color: var(--text-3);
+  margin-bottom: 0.75rem;
+}
+
+.lead-outreach {
+  font-size: 0.82rem;
+  color: var(--text-2);
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border);
+}
+
+.lead-outreach strong {
+  font-size: 0.7rem;
+  color: var(--text-3);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+/* Sample results label */
+.sample-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  background: #f0efeb;
+  padding: 0.3rem 0.75rem;
+  border-radius: 4px;
+}
+
+/* Loading */
+.loading {
+  text-align: center;
+  padding: 3rem;
+  color: var(--text-3);
+  font-size: 0.9rem;
+}
+
+.spinner {
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent-warm);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin-bottom: 1rem;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Loading steps */
+.loading-steps {
+  margin-top: 1rem;
+  font-size: 0.8rem;
+  color: var(--text-3);
+}
+
+.loading-step {
+  padding: 0.25rem 0;
+  transition: color 0.3s;
+}
+
+.loading-step.active {
+  color: var(--accent-warm);
+  font-weight: 600;
+}
+
+.loading-step.done {
+  color: #16a34a;
+}
+
+.loading-step.done::before {
+  content: "\2713 ";
+}
+
+.disclaimer {
+  font-size: 0.72rem;
+  color: var(--text-3);
+  margin-top: 2rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--border);
+}
+
+.error {
+  color: #dc2626;
+  font-size: 0.85rem;
+  padding: 1rem;
+  background: #fef2f2;
+  border-radius: 6px;
+  margin-top: 1.5rem;
+}
+
+/* Badge colors for trigger types */
+.trigger-funding { border-left: 3px solid #7c3aed; }
+.trigger-hiring { border-left: 3px solid #2563eb; }
+.trigger-expansion { border-left: 3px solid #16a34a; }
+.trigger-lease { border-left: 3px solid #ea580c; }
+.trigger-leadership { border-left: 3px solid #0891b2; }
+.trigger-market_shift { border-left: 3px solid #64748b; }
+
+/* Responsive */
+@media (max-width: 640px) {
+  .form-grid { grid-template-columns: 1fr; }
+  .lead-meta { flex-wrap: wrap; gap: 0.75rem; }
+  .page { padding: 2rem 1.25rem; }
+  .trigger-options { gap: 0.4rem; }
+}
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="header">
+    <div class="brand">Torrey Labs</div>
+    <h1>C&W Tenant Lead Finder</h1>
+    <p class="subtitle">Enter your ideal tenant profile and the system will identify companies that match — with trigger signals and suggested outreach angles.</p>
+  </div>
+
+  <form id="finder-form">
+    <div class="form-grid">
+      <div class="form-group">
+        <label for="industry">Industry *</label>
+        <input type="text" id="industry" placeholder="e.g. Biotech, Defense Tech, SaaS, Fintech" required>
+      </div>
+      <div class="form-group">
+        <label for="location">Location</label>
+        <input type="text" id="location" value="San Diego, CA" placeholder="San Diego, CA">
+      </div>
+      <div class="form-group">
+        <label for="companySize">Company Size</label>
+        <select id="companySize">
+          <option value="Any">Any size</option>
+          <option value="1-10">1-10 employees</option>
+          <option value="11-50" selected>11-50 employees</option>
+          <option value="51-200">51-200 employees</option>
+          <option value="201-1000">201-1,000 employees</option>
+          <option value="1000+">1,000+ employees</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="count">Number of leads</label>
+        <select id="count">
+          <option value="5">5 leads</option>
+          <option value="8" selected>8 leads</option>
+          <option value="12">12 leads</option>
+        </select>
+      </div>
+      <div class="form-group full">
+        <label>Trigger signals to prioritize (optional)</label>
+        <div class="trigger-options" id="trigger-options">
+          <label class="trigger-chip" onclick="toggleChip(this)"><input type="checkbox" value="Recent funding round"> Recent funding</label>
+          <label class="trigger-chip" onclick="toggleChip(this)"><input type="checkbox" value="Lease expiring within 12 months"> Lease expiring</label>
+          <label class="trigger-chip" onclick="toggleChip(this)"><input type="checkbox" value="Headcount growth"> Headcount growth</label>
+          <label class="trigger-chip" onclick="toggleChip(this)"><input type="checkbox" value="New C-suite hire"> New C-suite hire</label>
+          <label class="trigger-chip" onclick="toggleChip(this)"><input type="checkbox" value="Expansion announcement"> Expansion announcement</label>
+          <label class="trigger-chip" onclick="toggleChip(this)"><input type="checkbox" value="Government contract win"> Gov. contract win</label>
+        </div>
+      </div>
+    </div>
+    <button type="submit" class="submit-btn" id="submit-btn">
+      Find Leads
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+    </button>
+  </form>
+
+  <!-- Sample results shown on page load -->
+  <div id="sample-results">
+    <div class="results">
+      <div class="results-header">
+        <h2>Sample Results — San Diego Biotech & Defense</h2>
+        <div style="display:flex;gap:0.75rem;align-items:center;">
+          <span class="sample-label">Sample data from Q1 2026</span>
+          <button class="export-btn" onclick="exportSampleCSV()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+            Export CSV
+          </button>
+        </div>
+      </div>
+      <div class="market-context">San Diego attracted over $3B in venture funding in Q1 2026, with defense and biotech accounting for ~75% of that capital. Downtown office sits 35%+ vacant, but Torrey Pines/Sorrento Mesa lab space remains tight. Well-funded tenants in defense tech and life sciences represent the highest-probability opportunities this cycle.</div>
+      <div class="lead-list">
+
+        <!-- Lead 1: Shield AI -->
+        <div class="lead-card trigger-funding">
+          <div class="lead-top">
+            <div>
+              <div class="lead-company">Shield AI</div>
+              <div class="lead-industry">Defense AI &middot; <a href="https://shield.ai" target="_blank" rel="noopener" style="color:var(--accent-warm);text-decoration:none;font-size:0.75rem;">shield.ai</a></div>
+            </div>
+            <div style="display:flex;gap:0.5rem;align-items:center;">
+              <span class="priority-badge priority-high">HIGH</span>
+            </div>
+          </div>
+          <div class="lead-trigger">
+            <strong>FUNDING</strong><br>
+            Closed $2B round ($1.5B equity + $500M Blackstone preferred) at $12.7B valuation. Acquiring Aechelon Technology. Projecting $540M+ revenue in 2026. 90+ open roles in San Diego.
+          </div>
+          <div class="lead-meta">
+            <span>Size: 1,000+ employees</span>
+            <span>Location: San Diego, CA (600 W Broadway)</span>
+            <span>Est. need: 50,000-100,000 SF within 12 months</span>
+          </div>
+          <div class="lead-outreach">
+            <strong>Suggested outreach</strong><br>
+            Congrats on the $12.7B round and the Aechelon acquisition. As you scale the SD team, is your Downtown space going to hold, or are you starting to think about what's next? We have off-market options in Kearny Mesa and Otay Mesa with SCIF-ready buildouts.
+          </div>
+        </div>
+
+        <!-- Lead 2: Mirador Therapeutics -->
+        <div class="lead-card trigger-funding">
+          <div class="lead-top">
+            <div>
+              <div class="lead-company">Mirador Therapeutics</div>
+              <div class="lead-industry">Biotech &middot; Immunology</div>
+            </div>
+            <div style="display:flex;gap:0.5rem;align-items:center;">
+              <span class="priority-badge priority-high">HIGH</span>
+            </div>
+          </div>
+          <div class="lead-trigger">
+            <strong>FUNDING</strong><br>
+            $250M Series B just closed. Accelerating clinical pipeline across multiple assets. Recently moved to new Sorrento Valley HQ but growth trajectory suggests near-term expansion.
+          </div>
+          <div class="lead-meta">
+            <span>Size: 51-200 employees</span>
+            <span>Location: Sorrento Valley, San Diego</span>
+            <span>Est. need: 15,000-30,000 SF within 6-9 months</span>
+          </div>
+          <div class="lead-outreach">
+            <strong>Suggested outreach</strong><br>
+            With the $250M Series B and an accelerating pipeline, your Sorrento Valley space will get tight fast. We're tracking several lab/office hybrids in the corridor with GLP-compliant buildouts that could accommodate your growth timeline.
+          </div>
+        </div>
+
+        <!-- Lead 3: Saronic Technologies -->
+        <div class="lead-card trigger-expansion">
+          <div class="lead-top">
+            <div>
+              <div class="lead-company">Saronic Technologies</div>
+              <div class="lead-industry">Defense Tech &middot; Autonomous Maritime &middot; <a href="https://saronic.com" target="_blank" rel="noopener" style="color:var(--accent-warm);text-decoration:none;font-size:0.75rem;">saronic.com</a></div>
+            </div>
+            <div style="display:flex;gap:0.5rem;align-items:center;">
+              <span class="priority-badge priority-high">HIGH</span>
+            </div>
+          </div>
+          <div class="lead-trigger">
+            <strong>EXPANSION</strong><br>
+            Just signed 83,000 SF at 2727 Kurtz St. near Naval Information Warfare Center Pacific. Scaled to 1,300+ employees after $1.75B Series D. San Diego becoming primary operations hub near Naval facilities.
+          </div>
+          <div class="lead-meta">
+            <span>Size: 1,000+ employees</span>
+            <span>Location: Sports Arena / Airport corridor, San Diego</span>
+            <span>Est. need: Follow-on 40,000-80,000 SF within 12 months</span>
+          </div>
+          <div class="lead-outreach">
+            <strong>Suggested outreach</strong><br>
+            Saw the 83K SF lease at Kurtz St. With 1,300+ employees and the Series D capital behind you, the Sports Arena corridor is going to be your backyard. We're tracking additional waterfront-adjacent industrial and manufacturing space nearby that fits your timeline.
+          </div>
+        </div>
+
+        <!-- Lead 4: Atrium Therapeutics -->
+        <div class="lead-card trigger-funding">
+          <div class="lead-top">
+            <div>
+              <div class="lead-company">Atrium Therapeutics</div>
+              <div class="lead-industry">Biotech &middot; Novartis Spinout</div>
+            </div>
+            <div style="display:flex;gap:0.5rem;align-items:center;">
+              <span class="priority-badge priority-high">HIGH</span>
+            </div>
+          </div>
+          <div class="lead-trigger">
+            <strong>FUNDING</strong><br>
+            $270M spinout capitalization from Novartis in 2025. Building out therapeutic programs that require dedicated wet lab and clean room infrastructure in San Diego.
+          </div>
+          <div class="lead-meta">
+            <span>Size: 51-200 employees</span>
+            <span>Location: San Diego</span>
+            <span>Est. need: 20,000-40,000 SF within 6-12 months</span>
+          </div>
+          <div class="lead-outreach">
+            <strong>Suggested outreach</strong><br>
+            Building out a lab program from a $270M Novartis spinout — you're going to need purpose-built wet lab and clean room space. Landlords in Torrey Pines and Sorrento Mesa are offering concessions we haven't seen in years. Happy to run a quick comp analysis.
+          </div>
+        </div>
+
+        <!-- Lead 5: Erasca -->
+        <div class="lead-card trigger-hiring">
+          <div class="lead-top">
+            <div>
+              <div class="lead-company">Erasca</div>
+              <div class="lead-industry">Biotech &middot; Oncology &middot; <a href="https://erasca.com" target="_blank" rel="noopener" style="color:var(--accent-warm);text-decoration:none;font-size:0.75rem;">erasca.com</a></div>
+            </div>
+            <div style="display:flex;gap:0.5rem;align-items:center;">
+              <span class="priority-badge priority-high">HIGH</span>
+            </div>
+          </div>
+          <div class="lead-trigger">
+            <strong>HIRING</strong><br>
+            Significant hiring surge in San Diego — multiple clinical and R&D roles posted. Advancing RAS/MAPK pathway oncology pipeline with recent positive clinical data driving acceleration.
+          </div>
+          <div class="lead-meta">
+            <span>Size: 51-200 employees</span>
+            <span>Location: San Diego</span>
+          </div>
+          <div class="lead-outreach">
+            <strong>Suggested outreach</strong><br>
+            Saw the hiring push on the clinical side. When the team grows that fast, the space conversation usually follows within a quarter. If it comes up, I can put together a quick view of what's available near your current location.
+          </div>
+        </div>
+
+        <!-- Lead 6: General Atomics -->
+        <div class="lead-card trigger-expansion">
+          <div class="lead-top">
+            <div>
+              <div class="lead-company">General Atomics</div>
+              <div class="lead-industry">Defense &middot; Drone Systems &middot; <a href="https://ga.com" target="_blank" rel="noopener" style="color:var(--accent-warm);text-decoration:none;font-size:0.75rem;">ga.com</a></div>
+            </div>
+            <div style="display:flex;gap:0.5rem;align-items:center;">
+              <span class="priority-badge priority-high">HIGH</span>
+            </div>
+          </div>
+          <div class="lead-trigger">
+            <strong>EXPANSION</strong><br>
+            Announced $500M+ defense contract for drone systems, expanding San Diego operations. Major contract win signals headcount growth and space need within 6-12 months.
+          </div>
+          <div class="lead-meta">
+            <span>Size: 1,000+ employees</span>
+            <span>Location: San Diego (Poway / Rancho Bernardo)</span>
+          </div>
+          <div class="lead-outreach">
+            <strong>Suggested outreach</strong><br>
+            Saw the drone contract news. As you scale the SD team for this, we're tracking several options in the Poway/RB area that could work for the timeline. Want me to send a quick overview of what's available?
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <div id="results-container"></div>
+
+  <div class="disclaimer">
+    <strong>Data sources</strong>: Google News (SerpAPI), Apollo.io (contacts + org data), Jina Reader (website verification), Claude AI (scoring + outreach).
+    <br><br>
+    <strong>Additional integrations available</strong>: Crunchbase Pro (real-time funding alerts), LinkedIn Sales Navigator (job changes + headcount), CoStar (lease expirations + comps), SEC EDGAR (public filings), Clearbit (firmographic enrichment), ZoomInfo (decision-maker contacts), PitchBook (private market data), D&amp;B Hoovers (company financials). Each additional source improves lead accuracy and trigger detection.
+    <br><br>
+    Built by Torrey Labs for Cushman &amp; Wakefield. Verify details before outreach.
+  </div>
+</div>
+
+<script>
+// Trigger chip toggle
+function toggleChip(el) {
+  el.classList.toggle('checked');
+}
+
+// Collect selected triggers
+function getSelectedTriggers() {
+  const chips = document.querySelectorAll('#trigger-options .trigger-chip input:checked');
+  return Array.from(chips).map(c => c.value).join(', ');
+}
+
+// Sample lead data for CSV export
+const sampleLeads = [
+  {
+    company: "Shield AI",
+    industry: "Defense AI",
+    domain: "shield.ai",
+    priority: "High",
+    trigger_type: "Funding",
+    trigger: "Closed $2B round ($1.5B equity + $500M Blackstone preferred) at $12.7B valuation. Acquiring Aechelon Technology. Projecting $540M+ revenue in 2026. 90+ open roles in San Diego.",
+    size: "1,000+ employees",
+    location: "San Diego, CA (600 W Broadway)",
+    est_space_need: "50,000-100,000 SF within 12 months",
+    outreach_angle: "Congrats on the $12.7B round and the Aechelon acquisition. As you scale the SD team, is your Downtown space going to hold, or are you starting to think about what's next? We have off-market options in Kearny Mesa and Otay Mesa with SCIF-ready buildouts."
+  },
+  {
+    company: "Mirador Therapeutics",
+    industry: "Biotech / Immunology",
+    domain: "",
+    priority: "High",
+    trigger_type: "Funding",
+    trigger: "$250M Series B just closed. Accelerating clinical pipeline across multiple assets. Recently moved to new Sorrento Valley HQ but growth trajectory suggests near-term expansion.",
+    size: "51-200 employees",
+    location: "Sorrento Valley, San Diego",
+    est_space_need: "15,000-30,000 SF within 6-9 months",
+    outreach_angle: "With the $250M Series B and an accelerating pipeline, your Sorrento Valley space will get tight fast. We're tracking several lab/office hybrids in the corridor with GLP-compliant buildouts that could accommodate your growth timeline."
+  },
+  {
+    company: "Saronic Technologies",
+    industry: "Defense Tech / Autonomous Maritime",
+    domain: "saronic.com",
+    priority: "High",
+    trigger_type: "Expansion",
+    trigger: "Just signed 83,000 SF at 2727 Kurtz St. near Naval Information Warfare Center Pacific. Scaled to 1,300+ employees after $1.75B Series D. San Diego becoming primary operations hub.",
+    size: "1,000+ employees",
+    location: "Sports Arena / Airport corridor, San Diego",
+    est_space_need: "Follow-on 40,000-80,000 SF within 12 months",
+    outreach_angle: "Saw the 83K SF lease at Kurtz St. With 1,300+ employees and the Series D capital behind you, the Sports Arena corridor is going to be your backyard. We're tracking additional waterfront-adjacent industrial and manufacturing space nearby."
+  },
+  {
+    company: "Atrium Therapeutics",
+    industry: "Biotech / Novartis Spinout",
+    domain: "",
+    priority: "High",
+    trigger_type: "Funding",
+    trigger: "$270M spinout capitalization from Novartis in 2025. Building out therapeutic programs that require dedicated wet lab and clean room infrastructure in San Diego.",
+    size: "51-200 employees",
+    location: "San Diego",
+    est_space_need: "20,000-40,000 SF within 6-12 months",
+    outreach_angle: "Building out a lab program from a $270M Novartis spinout — you're going to need purpose-built wet lab and clean room space. Landlords in Torrey Pines and Sorrento Mesa are offering concessions we haven't seen in years."
+  },
+  {
+    company: "Erasca",
+    industry: "Biotech / Oncology",
+    domain: "erasca.com",
+    priority: "High",
+    trigger_type: "Hiring",
+    trigger: "Significant hiring surge in San Diego — multiple clinical and R&D roles posted. Advancing RAS/MAPK pathway oncology pipeline with recent positive clinical data.",
+    size: "51-200 employees",
+    location: "San Diego",
+    est_space_need: "",
+    outreach_angle: "Saw the hiring push on the clinical side. When the team grows that fast, the space conversation usually follows within a quarter. If it comes up, I can put together a quick view of what's available near your current location."
+  },
+  {
+    company: "General Atomics",
+    industry: "Defense / Drone Systems",
+    domain: "ga.com",
+    priority: "High",
+    trigger_type: "Expansion",
+    trigger: "Announced $500M+ defense contract for drone systems, expanding San Diego operations. Major contract win signals headcount growth and space need within 6-12 months.",
+    size: "1,000+ employees",
+    location: "San Diego (Poway / Rancho Bernardo)",
+    est_space_need: "",
+    outreach_angle: "Saw the drone contract news. As you scale the SD team for this, we're tracking several options in the Poway/RB area that could work for the timeline."
+  }
+];
+
+// CSV export for sample data
+function exportSampleCSV() {
+  exportLeadsCSV(sampleLeads);
+}
+
+// CSV export for live results
+function exportLiveCSV() {
+  if (window._liveLeads && window._liveLeads.length) {
+    exportLeadsCSV(window._liveLeads);
+  }
+}
+
+function exportLeadsCSV(leads) {
+  const headers = ["Company", "Industry", "Domain", "Priority", "Trigger Type", "Trigger Signal", "Size", "Location", "Est. Space Need", "Suggested Outreach", "Contact Name", "Contact Title", "Contact Email"];
+  const rows = leads.map(l => [
+    l.company || "",
+    l.industry || "",
+    l.domain || "",
+    l.priority || "",
+    l.trigger_type || "",
+    l.trigger || "",
+    l.size || "",
+    l.location || "",
+    l.est_space_need || "",
+    l.outreach_angle || "",
+    (l.contact && l.contact.name) || "",
+    (l.contact && l.contact.title) || "",
+    (l.contact && l.contact.email) || ""
+  ]);
+
+  let csv = [headers, ...rows].map(row =>
+    row.map(cell => '"' + String(cell).replace(/"/g, '""') + '"').join(',')
+  ).join('\n');
+
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'cw_leads_' + new Date().toISOString().slice(0, 10) + '.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// Form submit
+document.getElementById('finder-form').addEventListener('submit', async function(e) {
+  e.preventDefault();
+
+  const btn = document.getElementById('submit-btn');
+  const container = document.getElementById('results-container');
+  const sampleSection = document.getElementById('sample-results');
+
+  // Hide sample results
+  sampleSection.style.display = 'none';
+
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner" style="width:14px;height:14px;margin:0;display:inline-block;vertical-align:middle;"></span> Searching...';
+
+  container.innerHTML = '<div class="loading"><div class="spinner"></div><div class="loading-steps">' +
+    '<div class="loading-step active" id="step-1">Searching Google News for trigger signals...</div>' +
+    '<div class="loading-step" id="step-2">Querying Apollo.io for company & contact data...</div>' +
+    '<div class="loading-step" id="step-3">Verifying company websites...</div>' +
+    '<div class="loading-step" id="step-4">Scoring leads and generating outreach angles...</div>' +
+    '</div></div>';
+
+  // Animate loading steps
+  const steps = [
+    { id: 'step-1', delay: 0 },
+    { id: 'step-2', delay: 8000 },
+    { id: 'step-3', delay: 18000 },
+    { id: 'step-4', delay: 28000 }
+  ];
+  const timers = [];
+  for (let i = 1; i < steps.length; i++) {
+    timers.push(setTimeout(() => {
+      const prev = document.getElementById(steps[i - 1].id);
+      const curr = document.getElementById(steps[i].id);
+      if (prev) { prev.classList.remove('active'); prev.classList.add('done'); }
+      if (curr) { curr.classList.add('active'); }
+    }, steps[i].delay));
+  }
+
+  try {
+    const triggers = getSelectedTriggers();
+    const res = await fetch('https://sersweai.com/api/demo/find-leads', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        industry: document.getElementById('industry').value.trim(),
+        location: document.getElementById('location').value.trim(),
+        companySize: document.getElementById('companySize').value,
+        triggers: triggers,
+        count: parseInt(document.getElementById('count').value),
+      }),
+    });
+
+    timers.forEach(clearTimeout);
+
+    const data = await res.json();
+
+    if (!res.ok || !data.ok) {
+      container.innerHTML = '<div class="error">' + (data.error || 'Something went wrong. Try again.') + '</div>';
+      sampleSection.style.display = '';
+      return;
+    }
+
+    // Store live leads for CSV export
+    window._liveLeads = data.leads.map(l => ({
+      company: l.company,
+      industry: l.industry,
+      domain: l.domain,
+      priority: l.priority,
+      trigger_type: l.trigger_type,
+      trigger: l.trigger,
+      size: l.size ? String(l.size) : "",
+      location: l.location,
+      est_space_need: l.est_space_need || "",
+      outreach_angle: l.outreach_angle,
+      contact: l.contact || {}
+    }));
+
+    let html = '<div class="results">';
+    html += '<div class="results-header"><h2>' + data.leads.length + ' Leads Found</h2>';
+    html += '<button class="export-btn" onclick="exportLiveCSV()">';
+    html += '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>';
+    html += ' Export CSV</button></div>';
+
+    if (data.market_context) {
+      html += '<div class="market-context">' + escapeHtml(data.market_context) + '</div>';
+    }
+
+    if (data.sources_used) {
+      html += '<div style="font-size:0.75rem;color:var(--text-3);margin-bottom:1.5rem;">Sources: ' + data.sources_used.join(' + ') + '</div>';
+    }
+
+    html += '<div class="lead-list">';
+    for (const lead of data.leads) {
+      const priorityClass = 'priority-' + (lead.priority || 'medium');
+      const triggerClass = 'trigger-' + (lead.trigger_type || 'funding');
+      const qualityColors = { verified: '#16a34a', partial: '#ea580c', unverified: '#94a3b8' };
+      const quality = lead.data_quality || 'unverified';
+
+      html += '<div class="lead-card ' + triggerClass + '">';
+      html += '<div class="lead-top">';
+      html += '<div><div class="lead-company">' + escapeHtml(lead.company) + '</div>';
+      html += '<div class="lead-industry">' + escapeHtml(lead.industry || '');
+      if (lead.domain) html += ' &middot; <a href="https://' + escapeHtml(lead.domain) + '" target="_blank" rel="noopener" style="color:var(--accent-warm);text-decoration:none;font-size:0.75rem;">' + escapeHtml(lead.domain) + '</a>';
+      html += '</div></div>';
+      html += '<div style="display:flex;gap:0.5rem;align-items:center;">';
+      html += '<span style="font-size:0.6rem;font-weight:600;color:' + (qualityColors[quality] || '#94a3b8') + ';text-transform:uppercase;letter-spacing:0.05em;">' + quality + '</span>';
+      html += '<span class="priority-badge ' + priorityClass + '">' + escapeHtml(lead.priority || 'medium') + '</span>';
+      html += '</div></div>';
+
+      html += '<div class="lead-trigger"><strong>' + escapeHtml(lead.trigger_type || 'signal') + '</strong><br>' + escapeHtml(lead.trigger || '');
+      if (lead.source_url) html += '<br><a href="' + escapeHtml(lead.source_url) + '" target="_blank" rel="noopener" style="font-size:0.72rem;color:var(--accent-warm);">View source</a>';
+      html += '</div>';
+
+      html += '<div class="lead-meta">';
+      if (lead.size) html += '<span>Size: ' + escapeHtml(String(lead.size)) + '</span>';
+      if (lead.location) html += '<span>Location: ' + escapeHtml(lead.location) + '</span>';
+      html += '</div>';
+
+      if (lead.contact && lead.contact.name) {
+        html += '<div style="font-size:0.82rem;padding:0.6rem 0.8rem;background:#f0fdf4;border-radius:4px;margin-bottom:0.75rem;">';
+        html += '<strong style="font-size:0.7rem;color:#16a34a;letter-spacing:0.05em;text-transform:uppercase;">Verified Contact (Apollo)</strong><br>';
+        html += escapeHtml(lead.contact.name);
+        if (lead.contact.title) html += ' — ' + escapeHtml(lead.contact.title);
+        if (lead.contact.email) html += '<br><a href="mailto:' + escapeHtml(lead.contact.email) + '" style="color:var(--accent-warm);font-size:0.78rem;">' + escapeHtml(lead.contact.email) + '</a>';
+        if (lead.contact.linkedin) html += ' &middot; <a href="' + escapeHtml(lead.contact.linkedin) + '" target="_blank" rel="noopener" style="color:var(--accent-warm);font-size:0.78rem;">LinkedIn</a>';
+        html += '</div>';
+      }
+
+      if (lead.outreach_angle) {
+        html += '<div class="lead-outreach"><strong>Suggested outreach</strong><br>' + escapeHtml(lead.outreach_angle) + '</div>';
+      }
+
+      html += '</div>';
+    }
+    html += '</div></div>';
+
+    container.innerHTML = html;
+  } catch (err) {
+    timers.forEach(clearTimeout);
+    container.innerHTML = '<div class="error">Network error. Please check your connection and try again.</div>';
+    sampleSection.style.display = '';
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = 'Find Leads <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M5 12h14M12 5l7 7-7 7"/></svg>';
+  }
+});
+
+function escapeHtml(str) {
+  return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+</script>
+</body>
+</html>

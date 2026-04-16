@@ -1,0 +1,1 @@
+{ "version": 2, "routes": [{ "src": "/api/(.*)", "dest": "https://sersweai.com/api/$1" }] }
